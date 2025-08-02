@@ -12,7 +12,7 @@ from rest_framework.authentication import (
 from knox.crypto import hash_token
 from knox.models import get_token_model
 from knox.settings import CONSTANTS, knox_settings
-from knox.signals import token_expired
+
 
 logger = logging.getLogger(__name__)
 
@@ -107,13 +107,21 @@ class TokenAuthentication(BaseAuthentication):
                 if other_token.expiry < timezone.now():
                     other_token.delete()
                     username = other_token.user.get_username()
-                    token_expired.send(sender=self.__class__,
-                                       username=username, source="other_token")
+                   
         if auth_token.expiry is not None:
             if auth_token.expiry < timezone.now():
                 username = auth_token.user.get_username()
                 auth_token.delete()
-                token_expired.send(sender=self.__class__,
-                                   username=username, source="auth_token")
+
                 return True
         return False
+
+token_auth = TokenAuthentication()
+
+def get_authenticated_user(request, user=token_auth):
+    # if user is None:
+    #     raise HTTPError(401, "Authentication required")
+    return user
+
+def get_optional_user(request, user=token_auth):
+    return user
