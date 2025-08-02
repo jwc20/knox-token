@@ -4,10 +4,17 @@ from hmac import compare_digest
 
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from rest_framework import exceptions
-from rest_framework.authentication import (
-    BaseAuthentication, get_authorization_header,
-)
+
+
+# from rest_framework import exceptions
+# from rest_framework.authentication import (
+#     BaseAuthentication, get_authorization_header,
+# )
+
+
+from ninja.security import HttpBearer
+from ninja.errors import HttpError, AuthenticationError
+
 
 from knox.crypto import hash_token
 from knox.models import get_token_model
@@ -17,7 +24,10 @@ from knox.settings import CONSTANTS, knox_settings
 logger = logging.getLogger(__name__)
 
 
-class TokenAuthentication(BaseAuthentication):
+HTTP_HEADER_ENCODING = 'iso-8859-1'
+
+
+class TokenAuthentication(HttpBearer):
     '''
     This authentication scheme uses Knox AuthTokens for authentication.
 
@@ -31,7 +41,7 @@ class TokenAuthentication(BaseAuthentication):
     '''
 
     def authenticate(self, request):
-        auth = get_authorization_header(request).split()
+        auth = self.get_authorization_header(request).split()
         prefix = self.authenticate_header(request).encode()
 
         if not auth:
@@ -41,14 +51,28 @@ class TokenAuthentication(BaseAuthentication):
             return None
         if len(auth) == 1:
             msg = _('Invalid token header. No credentials provided.')
-            raise exceptions.AuthenticationFailed(msg)
+            raise AuthenticationError(msg)
         elif len(auth) > 2:
             msg = _('Invalid token header. '
                     'Token string should not contain spaces.')
-            raise exceptions.AuthenticationFailed(msg)
+            raise AuthenticationError(msg)
 
         user, auth_token = self.authenticate_credentials(auth[1])
         return (user, auth_token)
+
+    def get_authorization_header(self, request):
+        """
+        from drf authentication.py (https://github.com/encode/django-rest-framework/blob/master/rest_framework/authentication.py)
+
+        Return request's 'Authorization:' header, as a bytestring.
+
+        Hide some test client ickyness where the header can be unicode.
+        """
+        auth = request.META.get('HTTP_AUTHORIZATION', b'')
+        if isinstance(auth, str):
+            # Work around django test client oddness
+            auth = auth.encode(HTTP_HEADER_ENCODING)
+        return auth
 
     def authenticate_credentials(self, token):
         '''
@@ -67,12 +91,12 @@ class TokenAuthentication(BaseAuthentication):
             try:
                 digest = hash_token(token)
             except (TypeError, binascii.Error):
-                raise exceptions.AuthenticationFailed(msg)
+                raise AuthenticationError(msg)
             if compare_digest(digest, auth_token.digest):
                 if knox_settings.AUTO_REFRESH and auth_token.expiry:
                     self.renew_token(auth_token)
                 return self.validate_user(auth_token)
-        raise exceptions.AuthenticationFailed(msg)
+        raise AuthenticationError(msg)
 
     def renew_token(self, auth_token) -> None:
         current_expiry = auth_token.expiry
@@ -94,7 +118,7 @@ class TokenAuthentication(BaseAuthentication):
 
     def validate_user(self, auth_token):
         if not auth_token.user.is_active:
-            raise exceptions.AuthenticationFailed(
+            raise AuthenticationError(
                 _('User inactive or deleted.'))
         return (auth_token.user, auth_token)
 
