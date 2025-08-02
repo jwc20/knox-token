@@ -1,10 +1,14 @@
 import binascii
 from os import urandom as generate_bytes
-
-from knox.settings import knox_settings
-
+from .settings import knox_settings
 hash_func = knox_settings.SECURE_HASH_ALGORITHM
 
+# import hashlib
+# class MockKnoxSettings:
+#     AUTH_TOKEN_CHARACTER_LENGTH = 64  
+#     SECURE_HASH_ALGORITHM = hashlib.sha256  
+# knox_settings = MockKnoxSettings()
+# hash_func = knox_settings.SECURE_HASH_ALGORITHM
 
 def create_token_string() -> str:
     """
@@ -59,3 +63,8 @@ def hash_token(token: str) -> str:
     digest = hash_func()
     digest.update(make_hex_compatible(token))
     return digest.hexdigest()
+
+
+# if __name__ == '__main__':
+#     print(hash_token('abc123'))
+#     print(create_token_string())
