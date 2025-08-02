@@ -3,13 +3,19 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 
 from knox import crypto
-from knox.settings import CONSTANTS, knox_settings
+from knox.settings import knox_settings
+
+
+TOKEN_KEY_LENGTH = 15
+DIGEST_LENGTH = 128
 
 sha = knox_settings.SECURE_HASH_ALGORITHM
 
-User = settings.AUTH_USER_MODEL
+# User = settings.AUTH_USER_MODEL
+User = get_user_model()
 
 
 def get_expiry(expiry):
@@ -18,71 +24,50 @@ def get_expiry(expiry):
     return expiry
 
 
-def get_digest_token(prefix=knox_settings.TOKEN_PREFIX):
-    token = prefix + crypto.create_token_string()
+def get_digest_token():
+    token = crypto.create_token_string()
     digest = crypto.hash_token(token)
     return digest, token
 
 
-class AuthTokenManager(models.Manager):
+class KnoxTokenManager(models.Manager):
     def create(
         self,
         user,
         expiry=knox_settings.TOKEN_TTL,
-        prefix=knox_settings.TOKEN_PREFIX,
-        **kwargs
+        **kwargs,
     ):
-
-        digest, token = get_digest_token(prefix)
+        digest, token = get_digest_token()
         if expiry is not None:
             expiry = timezone.now() + expiry
         instance = super().create(
-            token_key=token[:CONSTANTS.TOKEN_KEY_LENGTH], digest=digest,
-            user=user, expiry=expiry, **kwargs)
+            token_key=token[: TOKEN_KEY_LENGTH],
+            digest=digest,
+            user=user,
+            expiry=expiry,
+            **kwargs,
+        )
         return instance, token
 
 
-class AbstractAuthToken(models.Model):
+class KnoxToken(models.Model):
+    objects = KnoxTokenManager()
 
-    objects = AuthTokenManager()
-
-    digest = models.CharField(
-        max_length=CONSTANTS.DIGEST_LENGTH, primary_key=True)
+    digest = models.CharField(max_length=DIGEST_LENGTH, primary_key=True)
     token_key = models.CharField(
-        max_length=CONSTANTS.MAXIMUM_TOKEN_PREFIX_LENGTH +
-        CONSTANTS.TOKEN_KEY_LENGTH,
-        db_index=True
+        max_length=TOKEN_KEY_LENGTH,
+        db_index=True,
+        help_text="Partial token value stored in DB, for reference only",
     )
-    user = models.ForeignKey(User, null=False, blank=False,
-                             related_name='auth_token_set', on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        User,
+        null=False,
+        blank=False,
+        on_delete=models.CASCADE,
+    )
     created = models.DateTimeField(auto_now_add=True)
     expiry = models.DateTimeField(null=True, blank=True)
 
-    class Meta:
-        abstract = True
-
     def __str__(self) -> str:
-        return f'{self.digest} : {self.user}'
+        return f"{self.digest} : {self.user}"
 
-
-class AuthToken(AbstractAuthToken):
-    class Meta:
-        swappable = 'KNOX_TOKEN_MODEL'
-
-
-def get_token_model():
-    """
-    Return the AuthToken model that is active in this project.
-    """
-
-    try:
-        return apps.get_model(knox_settings.TOKEN_MODEL, require_ready=False)
-    except ValueError:
-        raise ImproperlyConfigured(
-            "TOKEN_MODEL must be of the form 'app_label.model_name'"
-        )
-    except LookupError:
-        raise ImproperlyConfigured(
-            "TOKEN_MODEL refers to model '%s' that has not been installed"
-            % knox_settings.TOKEN_MODEL
-        )
