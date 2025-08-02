@@ -18,7 +18,6 @@ DEFAULTS = {
     'AUTH_HEADER_PREFIX': 'Token',
     'EXPIRY_DATETIME_FORMAT': api_settings.DATETIME_FORMAT,
     'TOKEN_MODEL': getattr(settings, 'KNOX_TOKEN_MODEL', 'knox.AuthToken'),
-    'TOKEN_PREFIX': '',
 }
 
 IMPORT_STRINGS = {
@@ -47,7 +46,6 @@ class CONSTANTS:
     '''
     TOKEN_KEY_LENGTH = 15
     DIGEST_LENGTH = 128
-    MAXIMUM_TOKEN_PREFIX_LENGTH = 10
 
     def __setattr__(self, *args, **kwargs):
         raise Exception('''
