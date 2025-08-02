@@ -1,12 +1,20 @@
-from django.contrib.auth import get_user_model
-from rest_framework import serializers
+# from django.contrib.auth import get_user_model
+# from rest_framework import serializers
 
-User = get_user_model()
+# User = get_user_model()
 
-username_field = User.USERNAME_FIELD if hasattr(User, 'USERNAME_FIELD') else 'username'
+# username_field = User.USERNAME_FIELD if hasattr(User, 'USERNAME_FIELD') else 'username'
 
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = (username_field,)
+# class UserSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = User
+#         fields = (username_field,)
+
+
+# from rest_framework import serializers
+
+
+# class TokenResponseSerializer(serializers.Serializer):
+#     token_value = serializers.CharField()
+#     expiry = serializers.DateTimeField()
