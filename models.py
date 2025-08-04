@@ -5,14 +5,17 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from knox import crypto
-from knox.settings import knox_settings
+from . import crypto
+
+# from .settings import knox_settings
+
+# from datetime import timedelta
 
 
 TOKEN_KEY_LENGTH = 15
 DIGEST_LENGTH = 128
-
-sha = knox_settings.SECURE_HASH_ALGORITHM
+TOKEN_TTL = timezone.timedelta(days=90)
+sha = 'hashlib.sha512'
 
 # User = settings.AUTH_USER_MODEL
 User = get_user_model()
@@ -32,10 +35,10 @@ def get_digest_token():
 
 class KnoxTokenManager(models.Manager):
     def create(
-        self,
-        user,
-        expiry=knox_settings.TOKEN_TTL,
-        **kwargs,
+            self,
+            user,
+            expiry=TOKEN_TTL,
+            **kwargs,
     ):
         digest, token = get_digest_token()
         if expiry is not None:
@@ -70,4 +73,3 @@ class KnoxToken(models.Model):
 
     def __str__(self) -> str:
         return f"{self.digest} : {self.user}"
-

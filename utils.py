@@ -3,7 +3,8 @@ from typing import Tuple
 
 from django.contrib.auth import get_user_model
 
-from knox_tokens.models import KnoxToken
+from knoxtokens.models import KnoxToken
+
 # from utils.exceptions import KnoxTokenDeleteFailed
 
 User = get_user_model()
