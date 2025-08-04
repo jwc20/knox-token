@@ -5,26 +5,26 @@ from hmac import compare_digest
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-
-# from rest_framework import exceptions
-# from rest_framework.authentication import (
-#     BaseAuthentication, get_authorization_header,
-# )
-
-
 from ninja.security import HttpBearer
 from ninja.errors import HttpError, AuthenticationError
 
+from .crypto import hash_token
+from .models import KnoxToken
 
-from knox.crypto import hash_token
-from knox.models import get_token_model
-from knox.settings import CONSTANTS, knox_settings
+# from .settings import CONSTANTS 
 
+AUTO_REFRESH = False
+TOKEN_TTL = timezone.timedelta(days=90)
+MIN_REFRESH_INTERVAL_SECOND = 60 * 60 * 24,
+HTTP_HEADER_ENCODING = 'iso-8859-1'
+AUTH_HEADER_PREFIX = "TOKEN"
 
 logger = logging.getLogger(__name__)
 
 
-HTTP_HEADER_ENCODING = 'iso-8859-1'
+def update_auth_token_expiry(auth_token_digest):
+    new_expiry = timezone.now() + TOKEN_TTL
+    KnoxToken.objects.filter(digest=auth_token_digest).update(expiry=new_expiry)
 
 
 class TokenAuthentication(HttpBearer):
@@ -39,113 +39,59 @@ class TokenAuthentication(HttpBearer):
     - `request.user` will be a django `User` instance
     - `request.auth` will be an `AuthToken` instance
     '''
-
     def authenticate(self, request):
-        auth = self.get_authorization_header(request).split()
-        prefix = self.authenticate_header(request).encode()
-
+        auth = request.META.get(
+            f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None
+        )
         if not auth:
-            return None
-        if auth[0].lower() != prefix.lower():
-            # Authorization header is possibly for another backend
-            return None
-        if len(auth) == 1:
-            msg = _('Invalid token header. No credentials provided.')
-            raise AuthenticationError(msg)
-        elif len(auth) > 2:
-            msg = _('Invalid token header. '
-                    'Token string should not contain spaces.')
-            raise AuthenticationError(msg)
+            raise Exception(_('Invalid token header.'))
+        return self._authenticate_credentials(auth)
+    
 
-        user, auth_token = self.authenticate_credentials(auth[1])
-        return (user, auth_token)
-
-    def get_authorization_header(self, request):
+    def _authenticate_credentials(self, token):
         """
-        from drf authentication.py (https://github.com/encode/django-rest-framework/blob/master/rest_framework/authentication.py)
-
-        Return request's 'Authorization:' header, as a bytestring.
-
-        Hide some test client ickyness where the header can be unicode.
-        """
-        auth = request.META.get('HTTP_AUTHORIZATION', b'')
-        if isinstance(auth, str):
-            # Work around django test client oddness
-            auth = auth.encode(HTTP_HEADER_ENCODING)
-        return auth
-
-    def authenticate_credentials(self, token):
-        '''
         Due to the random nature of hashing a value, this must inspect
         each auth_token individually to find the correct one.
 
         Tokens that have expired will be deleted and skipped
-        '''
-        msg = _('Invalid token.')
-        token = token.decode("utf-8")
-        for auth_token in get_token_model().objects.filter(
-                token_key=token[:CONSTANTS.TOKEN_KEY_LENGTH]).select_related('user'):
+        """
+        for auth_token in KnoxToken.objects.filter(token_key=token[:8]):
             if self._cleanup_token(auth_token):
                 continue
-
             try:
                 digest = hash_token(token)
             except (TypeError, binascii.Error):
-                raise AuthenticationError(msg)
+                raise Exception(_('Invalid token header. Token string '
+                                  'should not contain invalid characters.'))
             if compare_digest(digest, auth_token.digest):
-                if knox_settings.AUTO_REFRESH and auth_token.expiry:
-                    self.renew_token(auth_token)
-                return self.validate_user(auth_token)
-        raise AuthenticationError(msg)
+                if AUTO_REFRESH and auth_token.expiry:
+                    self._renew_token(auth_token)
+                return self._validate_user(auth_token)
+        raise Exception(_('Invalid token header.'))
 
-    def renew_token(self, auth_token) -> None:
+    def _renew_token(self, auth_token):
         current_expiry = auth_token.expiry
-        new_expiry = timezone.now() + knox_settings.TOKEN_TTL
-
-        # Do not auto-renew tokens past AUTO_REFRESH_MAX_TTL.
-        if knox_settings.AUTO_REFRESH_MAX_TTL is not None:
-            max_expiry = auth_token.created + knox_settings.AUTO_REFRESH_MAX_TTL
-            if new_expiry > max_expiry:
-                new_expiry = max_expiry
-                logger.info('Token renewal truncated due to AUTO_REFRESH_MAX_TTL.')
-
+        new_expiry = timezone.now() + TOKEN_TTL
         auth_token.expiry = new_expiry
-
-        # Throttle refreshing of token to avoid db writes
         delta = (new_expiry - current_expiry).total_seconds()
-        if delta > knox_settings.MIN_REFRESH_INTERVAL:
-            auth_token.save(update_fields=('expiry',))
+        if delta > MIN_REFRESH_INTERVAL_SECOND:
+            update_auth_token_expiry(auth_token.digest)
 
-    def validate_user(self, auth_token):
+    def _validate_user(self, auth_token):
         if not auth_token.user.is_active:
-            raise AuthenticationError(
-                _('User inactive or deleted.'))
+            raise Exception(_('User account is disabled.'))
         return (auth_token.user, auth_token)
 
-    def authenticate_header(self, request):
-        return knox_settings.AUTH_HEADER_PREFIX
-
-    def _cleanup_token(self, auth_token) -> bool:
-        for other_token in auth_token.user.auth_token_set.all():
-            if other_token.digest != auth_token.digest and other_token.expiry:
-                if other_token.expiry < timezone.now():
-                    other_token.delete()
-                    username = other_token.user.get_username()
-                   
+    def _cleanup_token(self, auth_token):
+        for user_auth_token in auth_token.user.authtoken_set.all():
+            if user_auth_token.expiry < timezone.now():
+                user_auth_token.delete()
         if auth_token.expiry is not None:
             if auth_token.expiry < timezone.now():
-                username = auth_token.user.get_username()
                 auth_token.delete()
-
                 return True
         return False
 
+
 token_auth = TokenAuthentication()
 
-def get_authenticated_user(request, user=token_auth):
-    # if user is None:
-    #     raise HTTPError(401, "Authentication required")
-    return user
-
-def get_optional_user(request, user=token_auth):
-    return user
