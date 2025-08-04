@@ -1,7 +1,19 @@
 import binascii
 from os import urandom as generate_bytes
-from .settings import knox_settings
-hash_func = knox_settings.SECURE_HASH_ALGORITHM
+# from .settings import knox_settings
+# hash_func = knox_settings.SECURE_HASH_ALGORITHM
+
+import binascii
+from os import urandom as generate_bytes
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.hashes import SHA512
+
+SECURE_HASH_ALGORITHM = 'hashlib.sha512'
+AUTH_TOKEN_CHARACTER_LENGTH = 64
+hash_func = SECURE_HASH_ALGORITHM
+
 
 # import hashlib
 # class MockKnoxSettings:
@@ -23,7 +35,7 @@ def create_token_string() -> str:
             random bytes.
     """
     return binascii.hexlify(
-        generate_bytes(int(knox_settings.AUTH_TOKEN_CHARACTER_LENGTH / 2))
+        generate_bytes(int(AUTH_TOKEN_CHARACTER_LENGTH / 2))
     ).decode()
 
 
@@ -60,10 +72,12 @@ def hash_token(token: str) -> str:
         >>> hash_token("abc123")
         'a123f...'  # The actual hash will be longer
     """
-    digest = hash_func()
-    digest.update(make_hex_compatible(token))
-    return digest.hexdigest()
-
+    digest = hashes.Hash(
+        SHA512(),
+        backend=default_backend(),
+    )
+    digest.update(binascii.unhexlify(token))
+    return binascii.hexlify(digest.finalize()).decode()
 
 # if __name__ == '__main__':
 #     print(hash_token('abc123'))
