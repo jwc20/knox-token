@@ -2,22 +2,19 @@ import binascii
 import logging
 from hmac import compare_digest
 
+from django.conf import settings
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-
 from ninja.security import HttpBearer
-from ninja.errors import HttpError, AuthenticationError
 
 from .crypto import hash_token
 from .models import KnoxToken
 
-# from .settings import CONSTANTS 
-
-AUTO_REFRESH = False
-TOKEN_TTL = timezone.timedelta(days=90)
-MIN_REFRESH_INTERVAL_SECOND = 60 * 60 * 24,
-HTTP_HEADER_ENCODING = 'iso-8859-1'
-AUTH_HEADER_PREFIX = "TOKEN"
+AUTO_REFRESH = settings.AUTO_REFRESH
+TOKEN_TTL = settings.TOKEN_TTL
+MIN_REFRESH_INTERVAL_SECOND = settings.MIN_REFRESH_INTERVAL_SECOND
+HTTP_HEADER_ENCODING = settings.HTTP_HEADER_ENCODING
+AUTH_HEADER_PREFIX = settings.AUTH_HEADER_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +25,7 @@ def update_auth_token_expiry(auth_token_digest):
 
 
 class TokenAuthentication(HttpBearer):
-    '''
+    """
     This authentication scheme uses Knox AuthTokens for authentication.
 
     Similar to DRF's TokenAuthentication, it overrides a large amount of that
@@ -38,15 +35,13 @@ class TokenAuthentication(HttpBearer):
     If successful
     - `request.user` will be a django `User` instance
     - `request.auth` will be an `AuthToken` instance
-    '''
+    """
+
     def authenticate(self, request):
-        auth = request.META.get(
-            f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None
-        )
+        auth = request.META.get(f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None)
         if not auth:
-            raise Exception(_('Invalid token header.'))
+            raise Exception(_("Invalid token header."))
         return self._authenticate_credentials(auth)
-    
 
     def _authenticate_credentials(self, token):
         """
@@ -61,13 +56,17 @@ class TokenAuthentication(HttpBearer):
             try:
                 digest = hash_token(token)
             except (TypeError, binascii.Error):
-                raise Exception(_('Invalid token header. Token string '
-                                  'should not contain invalid characters.'))
+                raise Exception(
+                    _(
+                        "Invalid token header. Token string "
+                        "should not contain invalid characters."
+                    )
+                )
             if compare_digest(digest, auth_token.digest):
                 if AUTO_REFRESH and auth_token.expiry:
                     self._renew_token(auth_token)
                 return self._validate_user(auth_token)
-        raise Exception(_('Invalid token header.'))
+        raise Exception(_("Invalid token header."))
 
     def _renew_token(self, auth_token):
         current_expiry = auth_token.expiry
@@ -79,7 +78,7 @@ class TokenAuthentication(HttpBearer):
 
     def _validate_user(self, auth_token):
         if not auth_token.user.is_active:
-            raise Exception(_('User account is disabled.'))
+            raise Exception(_("User account is disabled."))
         return (auth_token.user, auth_token)
 
     def _cleanup_token(self, auth_token):
@@ -94,4 +93,3 @@ class TokenAuthentication(HttpBearer):
 
 
 token_auth = TokenAuthentication()
-

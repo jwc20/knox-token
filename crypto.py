@@ -1,26 +1,13 @@
 import binascii
 from os import urandom as generate_bytes
-# from .settings import knox_settings
-# hash_func = knox_settings.SECURE_HASH_ALGORITHM
-
-import binascii
-from os import urandom as generate_bytes
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.hashes import SHA512
+from django.conf import settings
 
-SECURE_HASH_ALGORITHM = 'hashlib.sha512'
-AUTH_TOKEN_CHARACTER_LENGTH = 64
-hash_func = SECURE_HASH_ALGORITHM
+AUTH_TOKEN_CHARACTER_LENGTH = settings.AUTH_TOKEN_CHARACTER_LENGTH
 
-
-# import hashlib
-# class MockKnoxSettings:
-#     AUTH_TOKEN_CHARACTER_LENGTH = 64  
-#     SECURE_HASH_ALGORITHM = hashlib.sha256  
-# knox_settings = MockKnoxSettings()
-# hash_func = knox_settings.SECURE_HASH_ALGORITHM
 
 def create_token_string() -> str:
     """
@@ -52,7 +39,7 @@ def make_hex_compatible(token: str) -> bytes:
     Returns:
         bytes: The hex-compatible bytes representation of the token.
     """
-    return binascii.unhexlify(binascii.hexlify(bytes(token, 'utf-8')))
+    return binascii.unhexlify(binascii.hexlify(bytes(token, "utf-8")))
 
 
 def hash_token(token: str) -> str:
@@ -78,6 +65,7 @@ def hash_token(token: str) -> str:
     )
     digest.update(binascii.unhexlify(token))
     return binascii.hexlify(digest.finalize()).decode()
+
 
 # if __name__ == '__main__':
 #     print(hash_token('abc123'))
