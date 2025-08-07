@@ -5,7 +5,7 @@ from hmac import compare_digest
 from django.conf import settings
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from ninja.security import HttpBearer
+from ninja.security import HttpBearer, APIKeyHeader
 
 from .crypto import hash_token
 from .models import KnoxToken
@@ -15,6 +15,7 @@ TOKEN_TTL = settings.TOKEN_TTL
 MIN_REFRESH_INTERVAL_SECOND = settings.MIN_REFRESH_INTERVAL_SECOND
 HTTP_HEADER_ENCODING = settings.HTTP_HEADER_ENCODING
 AUTH_HEADER_PREFIX = settings.AUTH_HEADER_PREFIX
+TOKEN_KEY_LENGTH = settings.TOKEN_KEY_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def update_auth_token_expiry(auth_token_digest):
     KnoxToken.objects.filter(digest=auth_token_digest).update(expiry=new_expiry)
 
 
-class TokenAuthentication(HttpBearer):
+class TokenAuthentication(APIKeyHeader):
     """
     This authentication scheme uses Knox AuthTokens for authentication.
 
@@ -37,7 +38,9 @@ class TokenAuthentication(HttpBearer):
     - `request.auth` will be an `AuthToken` instance
     """
 
-    def authenticate(self, request):
+    param_name = AUTH_HEADER_PREFIX.upper()
+
+    def authenticate(self, request, key: str):
         auth = request.META.get(f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None)
         if not auth:
             raise Exception(_("Invalid token header."))
@@ -50,7 +53,7 @@ class TokenAuthentication(HttpBearer):
 
         Tokens that have expired will be deleted and skipped
         """
-        for auth_token in KnoxToken.objects.filter(token_key=token[:8]):
+        for auth_token in KnoxToken.objects.filter(token_key=token[:TOKEN_KEY_LENGTH]):
             if self._cleanup_token(auth_token):
                 continue
             try:
@@ -82,7 +85,7 @@ class TokenAuthentication(HttpBearer):
         return (auth_token.user, auth_token)
 
     def _cleanup_token(self, auth_token):
-        for user_auth_token in auth_token.user.authtoken_set.all():
+        for user_auth_token in auth_token.user.knoxtoken_set.all():
             if user_auth_token.expiry < timezone.now():
                 user_auth_token.delete()
         if auth_token.expiry is not None:
