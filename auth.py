@@ -25,7 +25,7 @@ def update_auth_token_expiry(auth_token_digest):
     KnoxToken.objects.filter(digest=auth_token_digest).update(expiry=new_expiry)
 
 
-class TokenAuthentication(APIKeyHeader):
+class TokenAuthentication(HttpBearer):
     """
     This authentication scheme uses Knox AuthTokens for authentication.
 
@@ -38,13 +38,21 @@ class TokenAuthentication(APIKeyHeader):
     - `request.auth` will be an `AuthToken` instance
     """
 
-    param_name = AUTH_HEADER_PREFIX.upper()
+    param_name = AUTH_HEADER_PREFIX
+    # @property
+    # def openapi_security_scheme(self):
+    #     return {
+    #         "type": "apiKey",
+    #         "in": "header",
+    #         "name": AUTH_HEADER_PREFIX.upper(),
+    #         "description": "Knox authentication token",
+    #     }
 
-    def authenticate(self, request, key: str):
-        auth = request.META.get(f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None)
-        if not auth:
-            raise Exception(_("Invalid token header."))
-        return self._authenticate_credentials(auth)
+    def authenticate(self, request, token, *args, **kwargs):
+        # auth = request.META.get(f"HTTP_{AUTH_HEADER_PREFIX.upper()}", None)
+        # if not auth:
+        #     raise Exception(_("Invalid token header."))
+        return self._authenticate_credentials(token)
 
     def _authenticate_credentials(self, token):
         """
